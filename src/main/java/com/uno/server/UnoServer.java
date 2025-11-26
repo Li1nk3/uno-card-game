@@ -86,42 +86,68 @@ public class UnoServer {
         // 记录出牌前的当前玩家索引
         int playerIndexBeforePlay = gameRoom.getPlayers().indexOf(gameRoom.getCurrentPlayer());
         
+        GameRoom.Player player = gameRoom.getPlayer(playerName);
+        int handSizeBeforePlay = player.hand.size();
+        // System.out.println("[调试] 玩家 " + playerName + " 出牌前手牌数: " + handSizeBeforePlay);
+        
         if (gameRoom.playCard(playerName, card)) {
+            int handSizeAfterPlay = player.hand.size();
+            // System.out.println("[调试] 玩家 " + playerName + " 出牌后手牌数: " + handSizeAfterPlay);
             // 广播出牌消息
             Message cardPlayed = new Message(MessageType.CARD_PLAYED);
             cardPlayed.setPlayerName(playerName);
             cardPlayed.setCard(card);
             broadcastMessage(cardPlayed);
             
-            // 立即检查游戏是否结束（在处理特殊卡效果之前）
+            // 检查游戏是否结束（玩家出完所有牌）
+            // System.out.println("检查游戏是否结束，玩家: " + playerName);
             if (gameRoom.isGameOver()) {
                 GameRoom.Player winner = gameRoom.getWinner();
+                System.out.println("游戏结束！获胜者: " + winner.name);
                 Message gameOver = new Message(MessageType.GAME_OVER);
                 gameOver.setPlayerName(winner.name);
                 broadcastMessage(gameOver);
-                System.out.println("游戏结束！获胜者: " + winner.name);
                 return;
             }
             
             // 处理DRAW_TWO和WILD_DRAW_FOUR的罚牌通知
             if (card.getType() == CardType.DRAW_TWO || card.getType() == CardType.WILD_DRAW_FOUR) {
-                // 找到被罚牌的玩家（出牌后的下一个玩家）
-                int nextPlayerIndex = (playerIndexBeforePlay + 1) % gameRoom.getPlayers().size();
-                GameRoom.Player penalizedPlayer = gameRoom.getPlayers().get(nextPlayerIndex);
+                // GameRoom.handleCardEffect 已经调用了nextTurn()，现在currentPlayer是被罚的玩家
+                GameRoom.Player penalizedPlayer = gameRoom.getCurrentPlayer();
                 
-                // 获取被罚牌玩家的最新手牌（已经包含了罚牌）
-                ClientHandler handler = getClientHandler(penalizedPlayer.name);
-                if (handler != null) {
-                    Message penaltyMsg = new Message(MessageType.CARD_DRAWN);
-                    penaltyMsg.setCards(new ArrayList<>(penalizedPlayer.hand));
-                    handler.sendMessage(penaltyMsg);
-                    
-                    // 广播罚牌消息（不包含具体牌）
-                    Message penaltyBroadcast = new Message(MessageType.CARD_DRAWN);
-                    penaltyBroadcast.setPlayerName(penalizedPlayer.name);
-                    penaltyBroadcast.setContent(card.getType() == CardType.DRAW_TWO ? "被罚抽2张牌" : "被罚抽4张牌");
-                    broadcastMessage(penaltyBroadcast);
+                int handSizeBefore = penalizedPlayer.hand.size();
+                // System.out.println("[调试] 被罚玩家 " + penalizedPlayer.name + " 罚牌前手牌数: " + handSizeBefore);
+                
+                // 让被罚的玩家抽牌
+                int drawCount = card.getType() == CardType.DRAW_TWO ? 2 : 4;
+                List<Card> drawnCards = gameRoom.getDrawnCards(penalizedPlayer, drawCount);
+                
+                int handSizeAfter = penalizedPlayer.hand.size();
+                // System.out.println("[调试] 被罚玩家 " + penalizedPlayer.name + " 罚牌后手牌数: " + handSizeAfter);
+                // System.out.println("[调试] 实际抽到的牌数: " + drawnCards.size());
+
+                // 通知被罚牌的玩家更新手牌（使用CARD_DRAWN消息）
+                ClientHandler penalizedHandler = getClientHandler(penalizedPlayer.name);
+                if (penalizedHandler != null) {
+                    Message handUpdate = new Message(MessageType.CARD_DRAWN);
+                    handUpdate.setCards(new ArrayList<>(penalizedPlayer.hand));
+                    handUpdate.setContent("被罚抽" + drawCount + "张牌");
+                    // System.out.println("[调试] 发送给 " + penalizedPlayer.name + " 的手牌数量: " + penalizedPlayer.hand.size());
+                    penalizedHandler.sendMessage(handUpdate);
                 }
+
+                // 向其他玩家广播罚牌消息（不包含被罚玩家）
+                Message penaltyBroadcast = new Message(MessageType.CARD_DRAWN);
+                penaltyBroadcast.setPlayerName(penalizedPlayer.name);
+                penaltyBroadcast.setContent("被罚抽" + drawCount + "张牌");
+                for (ClientHandler client : clients) {
+                    if (!penalizedPlayer.name.equals(client.getPlayerName())) {
+                        client.sendMessage(penaltyBroadcast);
+                    }
+                }
+
+                // 跳过被罚牌玩家的回合，切换到下一个玩家
+                gameRoom.nextTurn();
             }
             
             // 通知下一个玩家
@@ -137,8 +163,15 @@ public class UnoServer {
             return;
         }
         
+        GameRoom.Player player = gameRoom.getPlayer(playerName);
+        int handSizeBefore = player.hand.size();
+        // System.out.println("[调试] 玩家 " + playerName + " 主动抽牌前手牌数: " + handSizeBefore);
+        
         Card card = gameRoom.drawCard(playerName);
         if (card != null) {
+            int handSizeAfter = player.hand.size();
+            // System.out.println("[调试] 玩家 " + playerName + " 主动抽牌后手牌数: " + handSizeAfter);
+            
             // 发送抽到的牌给玩家
             ClientHandler handler = getClientHandler(playerName);
             if (handler != null) {
@@ -147,10 +180,14 @@ public class UnoServer {
                 handler.sendMessage(drawn);
             }
             
-            // 广播抽牌消息（不包含具体牌）
+            // 向其他玩家广播抽牌消息（不包含抽牌玩家本人）
             Message drawMsg = new Message(MessageType.CARD_DRAWN);
             drawMsg.setPlayerName(playerName);
-            broadcastMessage(drawMsg);
+            for (ClientHandler client : clients) {
+                if (!playerName.equals(client.getPlayerName())) {
+                    client.sendMessage(drawMsg);
+                }
+            }
             
             // 抽牌后切换到下一个玩家
             gameRoom.nextTurn();

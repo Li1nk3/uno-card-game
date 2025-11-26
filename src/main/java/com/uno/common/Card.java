@@ -67,4 +67,28 @@ public class Card implements Serializable {
         }
         return color + " " + type;
     }
+    
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        
+        Card other = (Card) obj;
+        // WILD卡牌比较时不考虑颜色（因为颜色可以被动态修改）
+        if (type == CardType.WILD || type == CardType.WILD_DRAW_FOUR) {
+            return type == other.type && number == other.number;
+        }
+        
+        return color == other.color &&
+               type == other.type &&
+               number == other.number;
+    }
+    
+    @Override
+    public int hashCode() {
+        int result = color != null ? color.hashCode() : 0;
+        result = 31 * result + (type != null ? type.hashCode() : 0);
+        result = 31 * result + number;
+        return result;
+    }
 }

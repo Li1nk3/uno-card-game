@@ -88,6 +88,12 @@ public class GameRoom {
         player.hand.remove(card);
         discardPile.add(card);
         
+        // 检查玩家是否出完所有牌（获胜）
+        if (player.hand.isEmpty()) {
+            System.out.println("玩家 " + playerName + " 出完了所有牌！");
+            return true; // 直接返回，让服务器处理游戏结束
+        }
+        
         // 处理特殊卡效果
         handleCardEffect(card);
         
@@ -107,17 +113,8 @@ public class GameRoom {
                 nextTurn();
                 break;
             case DRAW_TWO:
-                // 下一个玩家抽2张牌并跳过其回合
-                nextTurn();
-                Player nextPlayer = players.get(currentPlayerIndex);
-                drawCards(nextPlayer, 2);
-                nextTurn();
-                break;
             case WILD_DRAW_FOUR:
-                // 下一个玩家抽4张牌并跳过其回合
-                nextTurn();
-                nextPlayer = players.get(currentPlayerIndex);
-                drawCards(nextPlayer, 4);
+                // 不在这里处理，由服务器处理
                 nextTurn();
                 break;
             default:
@@ -183,10 +180,29 @@ public class GameRoom {
     }
     
     public boolean isGameOver() {
-        return players.stream().anyMatch(p -> p.hand.isEmpty());
+        boolean gameOver = players.stream().anyMatch(p -> p.hand.isEmpty());
+        // System.out.println("检查游戏是否结束: " + gameOver);
+        if (gameOver) {
+            for (Player p : players) {
+                System.out.println("玩家 " + p.name + " 手牌数量: " + p.hand.size());
+            }
+        }
+        return gameOver;
     }
     
     public Player getWinner() {
-        return players.stream().filter(p -> p.hand.isEmpty()).findFirst().orElse(null);
+        Player winner = players.stream().filter(p -> p.hand.isEmpty()).findFirst().orElse(null);
+        if (winner != null) {
+            System.out.println("找到获胜者: " + winner.name);
+        }
+        return winner;
+    }
+    
+    public boolean isClockwise() {
+        return clockwise;
+    }
+    
+    public int getCurrentPlayerIndex() {
+        return currentPlayerIndex;
     }
 }

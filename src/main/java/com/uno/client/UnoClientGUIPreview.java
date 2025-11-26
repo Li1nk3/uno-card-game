@@ -41,7 +41,7 @@ public class UnoClientGUIPreview extends JFrame {
     
     private void initGUI() {
         setTitle("UNO 游戏界面预览");
-        setSize(950, 700);
+        setSize(1100, 800);  // 放大窗口尺寸
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
         getContentPane().setBackground(new Color(240, 240, 240));
@@ -109,14 +109,11 @@ public class UnoClientGUIPreview extends JFrame {
         titlePanel.add(handCountLabel, BorderLayout.EAST);
         bottomPanel.add(titlePanel, BorderLayout.NORTH);
         
-        // 手牌区域 - 使用重叠布局
-        handPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, -25, 10));  // 负间距实现重叠
+        // 手牌区域 - 直接使用JPanel，不使用JScrollPane避免裁剪
+        handPanel = new JPanel(null);  // 使用绝对布局
         handPanel.setBackground(new Color(245, 245, 245));  // 浅灰色背景
-        JScrollPane handScroll = new JScrollPane(handPanel);
-        handScroll.setPreferredSize(new Dimension(900, 180));  // 增加高度以容纳抽出效果
-        handScroll.setBorder(BorderFactory.createLineBorder(new Color(180, 180, 180), 1));
-        handScroll.getViewport().setBackground(new Color(245, 245, 245));
-        bottomPanel.add(handScroll, BorderLayout.CENTER);
+        handPanel.setPreferredSize(new Dimension(1050, 280));  // 设置足够大的尺寸
+        bottomPanel.add(handPanel, BorderLayout.CENTER);
         
         // 按钮区域
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
@@ -176,26 +173,64 @@ public class UnoClientGUIPreview extends JFrame {
         topCardContainer.repaint();
         
         // 显示手牌
+        handPanel.setLayout(null);
+        handPanel.removeAll(); 
+
+        int cardWidth = 120;
+        int cardHeight = 180;
+        int overlap = 70;
+
+        int totalWidth = (hand.size() - 1) * overlap + cardWidth;
+        handPanel.setPreferredSize(new java.awt.Dimension(totalWidth, cardHeight + 80));  // 增加容器高度
+
         for (int i = 0; i < hand.size(); i++) {
             Card card = hand.get(i);
             boolean canPlay = card.canPlayOn(topCard);
             
             UnoCardPanel cardPanel = new UnoCardPanel(card, canPlay);
             
+            int x = i * overlap;
+            int y = 50;  // 向下移动，为悬停提供更多向上空间
+            cardPanel.setBounds(x, y, cardWidth, cardHeight);
+            
+            // 存储原始z-order索引
+            cardPanel.putClientProperty("originalZOrder", i);
+
             cardPanel.addMouseListener(new java.awt.event.MouseAdapter() {
                 public void mouseEntered(java.awt.event.MouseEvent e) {
                     cardPanel.setHovered(true);
+                    // 悬停时提升到最上层（z-order 0是最上层）
+                    handPanel.setComponentZOrder(cardPanel, 0);
+                    handPanel.repaint();
                 }
                 public void mouseExited(java.awt.event.MouseEvent e) {
                     cardPanel.setHovered(false);
+                    // 恢复原来的层级顺序
+                    Integer originalIndex = (Integer) cardPanel.getClientProperty("originalZOrder");
+                    if (originalIndex != null) {
+                        // 简化逻辑：直接使用原始索引作为z-order
+                        // 0是最上层，所以最右边的牌(索引最大)应该有最小的z-order
+                        int totalCards = handPanel.getComponentCount();
+                        int newZOrder = totalCards - 1 - originalIndex;
+                        
+                        // 确保z-order在有效范围内
+                        if (newZOrder >= 0 && newZOrder < totalCards) {
+                            handPanel.setComponentZOrder(cardPanel, newZOrder);
+                        }
+                    }
+                    handPanel.repaint();
                 }
             });
             
             handPanel.add(cardPanel);
+            
+            // 初始设置：最左边的牌在最下层，最右边的牌在最上层
+            int initialZOrder = handPanel.getComponentCount() - 1 - i;
+            handPanel.setComponentZOrder(cardPanel, initialZOrder);
         }
-        
-        handPanel.revalidate();
+
         handPanel.repaint();
+        handPanel.revalidate();
     }
     
     private void logMessage(String message) {

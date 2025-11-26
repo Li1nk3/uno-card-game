@@ -65,7 +65,7 @@ public class UnoClientGUI extends JFrame {
     
     private void initGUI() {
         setTitle("UNO 游戏 - " + playerName);
-        setSize(950, 700);
+        setSize(1100, 800);  // 放大窗口尺寸
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
         getContentPane().setBackground(new Color(240, 240, 240));
@@ -84,7 +84,7 @@ public class UnoClientGUI extends JFrame {
         JPanel cardPanel = new JPanel();
         cardPanel.setBackground(new Color(240, 240, 240));
         topCardContainer = new JPanel();
-        topCardContainer.setPreferredSize(new Dimension(120, 160));
+        topCardContainer.setPreferredSize(new Dimension(100, 180));
         topCardContainer.setBackground(new Color(240, 240, 240));
         cardPanel.add(topCardContainer);
         topPanel.add(cardPanel, BorderLayout.CENTER);
@@ -133,14 +133,11 @@ public class UnoClientGUI extends JFrame {
         titlePanel.add(handCountLabel, BorderLayout.EAST);
         bottomPanel.add(titlePanel, BorderLayout.NORTH);
         
-        // 手牌区域 - 使用重叠布局
-        handPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, -25, 10));  // 负间距实现重叠
+        // 手牌区域 - 直接使用JPanel，不使用JScrollPane避免裁剪
+        handPanel = new JPanel(null);  // 使用绝对布局
         handPanel.setBackground(new Color(245, 245, 245));  // 浅灰色背景
-        JScrollPane handScroll = new JScrollPane(handPanel);
-        handScroll.setPreferredSize(new Dimension(900, 180));  // 增加高度以容纳抽出效果
-        handScroll.setBorder(BorderFactory.createLineBorder(new Color(180, 180, 180), 1));
-        handScroll.getViewport().setBackground(new Color(245, 245, 245));
-        bottomPanel.add(handScroll, BorderLayout.CENTER);
+        handPanel.setPreferredSize(new Dimension(1050, 280));  // 设置足够大的尺寸
+        bottomPanel.add(handPanel, BorderLayout.CENTER);
         
         // 按钮区域
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
@@ -212,8 +209,17 @@ public class UnoClientGUI extends JFrame {
         switch (message.getType()) {
             case GAME_STATE:
                 if (message.getCards() != null) {
+                    int oldHandSize = hand.size();
                     hand = message.getCards();
-                    logMessage("[游戏] 游戏开始！你有 " + hand.size() + " 张牌");
+                    int newHandSize = hand.size();
+                    
+                    // 只有在手牌数量变化时才显示消息，避免重复显示"游戏开始"
+                    if (oldHandSize == 0 && newHandSize > 0) {
+                        logMessage("[游戏] 游戏开始！你有 " + hand.size() + " 张牌");
+                    } else if (newHandSize > oldHandSize) {
+                        logMessage("之前有"+oldHandSize+"张牌");
+                        logMessage("[手牌] 你的手牌已更新，现在有 " + hand.size() + " 张牌");
+                    }
                     updateHandDisplay();
                 }
                 if (message.getCard() != null) {
@@ -279,13 +285,31 @@ public class UnoClientGUI extends JFrame {
                 break;
                 
             case GAME_OVER:
+                System.out.println("客户端收到GAME_OVER消息: " + message.getPlayerName());
                 logMessage("[结束] 游戏结束！获胜者: " + message.getPlayerName());
                 statusLabel.setText("游戏结束");
                 statusLabel.setForeground(new Color(230, 126, 34));
-                JOptionPane.showMessageDialog(this, 
-                    "游戏结束！\n获胜者: " + message.getPlayerName(), 
-                    "游戏结束", JOptionPane.INFORMATION_MESSAGE);
+                myTurn = false;
                 drawButton.setEnabled(false);
+                
+                // 确保在EDT线程中显示弹窗
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        // 如果是当前玩家获胜，显示特殊消息
+                        if (message.getPlayerName().equals(playerName)) {
+                            JOptionPane.showMessageDialog(this,
+                                "🎉 恭喜你赢得了游戏！\n",
+                                "胜利！", JOptionPane.INFORMATION_MESSAGE);
+                        } else {
+                            JOptionPane.showMessageDialog(this,
+                                "游戏结束！\n获胜者: " + message.getPlayerName(),
+                                "游戏结束", JOptionPane.INFORMATION_MESSAGE);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("显示胜利弹窗时出错: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                });
                 break;
                 
             case ERROR:
@@ -308,6 +332,16 @@ public class UnoClientGUI extends JFrame {
         handPanel.removeAll();
         handCountLabel.setText(hand.size() + " 张");
         
+        // 使用绝对布局和z-order管理
+        handPanel.setLayout(null);
+        
+        int cardWidth = 100;
+        int cardHeight = 180;
+        int overlap = 60;
+        
+        int totalWidth = (hand.size() - 1) * overlap + cardWidth;
+        handPanel.setPreferredSize(new java.awt.Dimension(totalWidth, cardHeight + 80));  // 增加容器高度
+        
         for (int i = 0; i < hand.size(); i++) {
             final int index = i;
             Card card = hand.get(i);
@@ -319,6 +353,13 @@ public class UnoClientGUI extends JFrame {
                 cardPanel.setEnabled(false);
             }
             
+            int x = i * overlap;
+            int y = 50;  // 向下移动，为悬停提供更多向上空间
+            cardPanel.setBounds(x, y, cardWidth, cardHeight);
+            
+            // 存储原始z-order索引
+            cardPanel.putClientProperty("originalZOrder", i);
+            
             cardPanel.addMouseListener(new MouseAdapter() {
                 public void mouseClicked(MouseEvent e) {
                     if (myTurn && canPlay) {
@@ -328,15 +369,31 @@ public class UnoClientGUI extends JFrame {
                 
                 public void mouseEntered(MouseEvent e) {
                     cardPanel.setHovered(true);
+                    // 悬停时提升到最上层（z-order 0是最上层）
+                    handPanel.setComponentZOrder(cardPanel, 0);
+                    handPanel.repaint();
                 }
                 
                 public void mouseExited(MouseEvent e) {
                     cardPanel.setHovered(false);
+                    Integer originalIndex = (Integer) cardPanel.getClientProperty("originalZOrder");
+                    if (originalIndex != null) {
+                        
+                        int totalCards = handPanel.getComponentCount();
+                        int newZOrder = totalCards - 1 - originalIndex;
+                        if (newZOrder >= 0 && newZOrder < totalCards) {
+                            handPanel.setComponentZOrder(cardPanel, newZOrder);
+                        }
+                    }
+                    handPanel.repaint();
                 }
             });
             
             handPanel.add(cardPanel);
+            int initialZOrder = handPanel.getComponentCount() - 1 - i;
+            handPanel.setComponentZOrder(cardPanel, initialZOrder);
         }
+        
         handPanel.revalidate();
         handPanel.repaint();
     }
@@ -390,6 +447,17 @@ public class UnoClientGUI extends JFrame {
         sendMessage(playMsg);
         
         hand.remove(index);
+        
+        // 检查是否出完所有牌（本地检查，服务器也会验证）
+        if (hand.isEmpty()) {
+            logMessage("🎉 恭喜！你出完了所有牌！");
+            statusLabel.setText("🏆 你赢了！");
+            statusLabel.setForeground(new Color(46, 204, 113));
+            drawButton.setEnabled(false);
+            updateHandDisplay();
+            // 不要return，继续等待服务器发送GAME_OVER消息
+        }
+        
         updateHandDisplay();
         myTurn = false;
         statusLabel.setText("⏳ 等待其他玩家...");
