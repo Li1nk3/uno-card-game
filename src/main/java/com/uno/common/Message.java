@@ -14,6 +14,7 @@ public class Message implements Serializable {
     private String content;
     private int currentPlayerIndex;
     private int cardCount; // 某玩家手牌数量
+    private List<PlayerInfo> playerInfos; // 所有玩家信息
     
     public Message(MessageType type) {
         this.type = type;
@@ -81,5 +82,13 @@ public class Message implements Serializable {
     
     public void setCardCount(int cardCount) {
         this.cardCount = cardCount;
+    }
+    
+    public List<PlayerInfo> getPlayerInfos() {
+        return playerInfos;
+    }
+    
+    public void setPlayerInfos(List<PlayerInfo> playerInfos) {
+        this.playerInfos = playerInfos;
     }
 }

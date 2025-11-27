@@ -15,6 +15,7 @@ public class UnoGameLauncher extends JFrame {
     private JButton startServerButton;
     private JButton startClientButton;
     private JSpinner clientCountSpinner;
+    private JTextField serverAddressField;
     private Thread serverThread;
     private boolean serverRunning = false;
     
@@ -36,7 +37,7 @@ public class UnoGameLauncher extends JFrame {
         setLayout(new BorderLayout(10, 10));
         
         // 顶部控制面板
-        JPanel controlPanel = new JPanel(new GridLayout(3, 1, 5, 5));
+        JPanel controlPanel = new JPanel(new GridLayout(4, 1, 5, 5));
         controlPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
         // 服务器控制
@@ -47,6 +48,19 @@ public class UnoGameLauncher extends JFrame {
         serverPanel.add(new JLabel("服务器: "));
         serverPanel.add(startServerButton);
         controlPanel.add(serverPanel);
+        
+        // 服务器地址输入
+        JPanel addressPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        addressPanel.add(new JLabel("服务器地址: "));
+        serverAddressField = new JTextField("localhost", 15);
+        serverAddressField.setFont(new Font("微软雅黑", Font.PLAIN, 14));
+        serverAddressField.setToolTipText("输入服务器IP地址或主机名，默认为localhost");
+        addressPanel.add(serverAddressField);
+        JLabel tipLabel = new JLabel("(默认: localhost)");
+        tipLabel.setFont(new Font("微软雅黑", Font.PLAIN, 11));
+        tipLabel.setForeground(new Color(100, 100, 100));
+        addressPanel.add(tipLabel);
+        controlPanel.add(addressPanel);
         
         // 客户端数量选择
         JPanel clientCountPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -136,7 +150,7 @@ public class UnoGameLauncher extends JFrame {
         startServerButton.setBackground(new Color(220, 20, 60));
         startServerButton.setForeground(Color.WHITE);
         startClientButton.setEnabled(true);
-        log("✓ 服务器已启动 (端口: 8888)\n");
+        log("服务器已启动 (端口: 8888)\n");
     }
     
     private void stopServer() {
@@ -174,10 +188,14 @@ public class UnoGameLauncher extends JFrame {
                     );
                     
                     if (name != null && !name.trim().isEmpty()) {
-                        new UnoClientGUI(name.trim()).setVisible(true);
-                        log("✓ 客户端 " + clientNum + " 已启动 (玩家: " + name.trim() + ")");
+                        String serverAddress = serverAddressField.getText().trim();
+                        if (serverAddress.isEmpty()) {
+                            serverAddress = "localhost";
+                        }
+                        new UnoClientGUI(name.trim(), serverAddress).setVisible(true);
+                        log("客户端 " + clientNum + " 已启动 (玩家: " + name.trim() + ", 服务器: " + serverAddress + ")");
                     } else {
-                        log("✗ 客户端 " + clientNum + " 启动已取消");
+                        log("客户端 " + clientNum + " 启动已取消");
                     }
                 });
             });

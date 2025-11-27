@@ -4,8 +4,9 @@ import com.uno.common.Card;
 import com.uno.common.CardType;
 import com.uno.common.Message;
 import com.uno.common.MessageType;
+import com.uno.common.PlayerInfo;
 import javax.swing.*;
-import javax.swing.border.*;
+import javax.swing.plaf.basic.BasicButtonUI;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
@@ -14,9 +15,9 @@ import java.util.*;
 import java.util.List;
 
 public class UnoClientGUI extends JFrame {
-    private static final String SERVER_HOST = "localhost";
     private static final int SERVER_PORT = 8888;
     
+    private String serverHost;
     private Socket socket;
     private ObjectOutputStream output;
     private ObjectInputStream input;
@@ -24,14 +25,18 @@ public class UnoClientGUI extends JFrame {
     private List<Card> hand = new ArrayList<>();
     private Card topCard;
     private boolean myTurn = false;
+    private List<PlayerInfo> playerInfos = new ArrayList<>();
     
-    // GUI 组件
-    private JTextArea gameLog;
-    private JPanel handPanel;
-    private JPanel topCardContainer;
-    private JLabel statusLabel;
-    private JLabel handCountLabel;
+    // UI组件 - HUD布局
+    private JLayeredPane mainLayer;
+    private JPanel backgroundPanel;
+    private PlayerAvatarPanel leftAvatar, rightAvatar, topAvatar, myAvatar;
+    private JPanel centerTable;
+    private JPanel myHandPanel;
     private JButton drawButton;
+    private JPanel topCardContainer;
+    private JLabel directionLabel;
+    private JLabel statusLabel;
     
     public static void main(String[] args) {
         try {
@@ -43,7 +48,11 @@ public class UnoClientGUI extends JFrame {
         SwingUtilities.invokeLater(() -> {
             String name = JOptionPane.showInputDialog(null, "请输入你的名字:", "UNO 游戏", JOptionPane.QUESTION_MESSAGE);
             if (name != null && !name.trim().isEmpty()) {
-                new UnoClientGUI(name.trim()).setVisible(true);
+                String server = JOptionPane.showInputDialog(null, "请输入服务器地址:", "连接服务器", JOptionPane.QUESTION_MESSAGE);
+                if (server == null || server.trim().isEmpty()) {
+                    server = "localhost";
+                }
+                new UnoClientGUI(name.trim(), server.trim()).setVisible(true);
             } else {
                 System.exit(0);
             }
@@ -51,7 +60,12 @@ public class UnoClientGUI extends JFrame {
     }
     
     public UnoClientGUI(String playerName) {
+        this(playerName, "localhost");
+    }
+    
+    public UnoClientGUI(String playerName, String serverHost) {
         this.playerName = playerName;
+        this.serverHost = serverHost;
         initGUI();
         setLocationRelativeTo(null);
         
@@ -65,95 +79,73 @@ public class UnoClientGUI extends JFrame {
     
     private void initGUI() {
         setTitle("UNO 游戏 - " + playerName);
-        setSize(1100, 800);  // 放大窗口尺寸
+        setSize(1280, 720);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout(10, 10));
-        getContentPane().setBackground(new Color(240, 240, 240));
         
-        // 顶部区域
-        JPanel topPanel = new JPanel(new BorderLayout(10, 10));
-        topPanel.setBackground(new Color(240, 240, 240));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 5, 10));
+        // 使用分层面板
+        mainLayer = new JLayeredPane();
+        setContentPane(mainLayer);
         
-        statusLabel = new JLabel("等待其他玩家加入...", SwingConstants.CENTER);
-        statusLabel.setFont(new Font("微软雅黑", Font.BOLD, 18));
-        statusLabel.setForeground(new Color(100, 100, 100));
-        topPanel.add(statusLabel, BorderLayout.NORTH);
+        // --- 初始化组件 ---
         
-        // 牌堆顶显示
-        JPanel cardPanel = new JPanel();
-        cardPanel.setBackground(new Color(240, 240, 240));
+        // 1. 背景层
+        backgroundPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2d = (Graphics2D) g;
+                // 渐变背景
+                GradientPaint gradient = new GradientPaint(
+                    0, 0, new Color(44, 62, 80),
+                    0, getHeight(), new Color(52, 73, 94)
+                );
+                g2d.setPaint(gradient);
+                g2d.fillRect(0, 0, getWidth(), getHeight());
+            }
+        };
+        
+        // 2. 中心桌子（出牌堆和方向指示）
+        centerTable = new JPanel(null);
+        centerTable.setOpaque(false);
+        
+        // 牌堆顶卡牌容器
         topCardContainer = new JPanel();
-        topCardContainer.setPreferredSize(new Dimension(100, 180));
-        topCardContainer.setBackground(new Color(240, 240, 240));
-        cardPanel.add(topCardContainer);
-        topPanel.add(cardPanel, BorderLayout.CENTER);
+        topCardContainer.setOpaque(false);
+        topCardContainer.setLayout(new BorderLayout());
         
-        add(topPanel, BorderLayout.NORTH);
+        // 方向指示标签
+        directionLabel = new JLabel("→", SwingConstants.CENTER);
+        directionLabel.setFont(new Font("微软雅黑", Font.BOLD, 48));
+        directionLabel.setForeground(new Color(46, 204, 113));
         
-        // 中间区域
-        JPanel centerPanel = new JPanel(new BorderLayout(10, 10));
-        centerPanel.setBackground(new Color(240, 240, 240));
-        centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+        // 状态标签（显示在中心桌子上方）
+        statusLabel = new JLabel("正在连接服务器...", SwingConstants.CENTER);
+        statusLabel.setFont(new Font("微软雅黑", Font.BOLD, 20));
+        statusLabel.setForeground(Color.WHITE);
         
-        // 游戏日志
-        gameLog = new JTextArea();
-        gameLog.setEditable(false);
-        gameLog.setFont(new Font("微软雅黑", Font.PLAIN, 12));
-        gameLog.setLineWrap(true);
-        gameLog.setWrapStyleWord(true);
-        JScrollPane scrollPane = new JScrollPane(gameLog);
-        scrollPane.setPreferredSize(new Dimension(900, 220));
-        scrollPane.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(180, 180, 180), 1),
-            " 游戏日志 ",
-            TitledBorder.LEFT,
-            TitledBorder.TOP,
-            new Font("微软雅黑", Font.BOLD, 13)
-        ));
-        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        // 3. 玩家头像（初始为占位符，连接后更新）
+        leftAvatar = new PlayerAvatarPanel("等待中", 0, false);
+        topAvatar = new PlayerAvatarPanel("等待中", 0, false);
+        rightAvatar = new PlayerAvatarPanel("等待中", 0, false);
+        myAvatar = new PlayerAvatarPanel(playerName, 0, true);
         
-        add(centerPanel, BorderLayout.CENTER);
+        // 4. 手牌区域
+        myHandPanel = new JPanel(null);
+        myHandPanel.setOpaque(false);
         
-        // 底部手牌区域
-        JPanel bottomPanel = new JPanel(new BorderLayout(5, 5));
-        bottomPanel.setBackground(new Color(240, 240, 240));
-        bottomPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 10, 10));
-        
-        // 标题栏
-        JPanel titlePanel = new JPanel(new BorderLayout());
-        titlePanel.setBackground(new Color(240, 240, 240));
-        JLabel handLabel = new JLabel("你的手牌");
-        handLabel.setFont(new Font("微软雅黑", Font.BOLD, 14));
-        titlePanel.add(handLabel, BorderLayout.WEST);
-        
-        handCountLabel = new JLabel("0 张");
-        handCountLabel.setFont(new Font("微软雅黑", Font.PLAIN, 13));
-        handCountLabel.setForeground(new Color(100, 100, 100));
-        titlePanel.add(handCountLabel, BorderLayout.EAST);
-        bottomPanel.add(titlePanel, BorderLayout.NORTH);
-        
-        // 手牌区域 - 直接使用JPanel，不使用JScrollPane避免裁剪
-        handPanel = new JPanel(null);  // 使用绝对布局
-        handPanel.setBackground(new Color(245, 245, 245));  // 浅灰色背景
-        handPanel.setPreferredSize(new Dimension(1050, 280));  // 设置足够大的尺寸
-        bottomPanel.add(handPanel, BorderLayout.CENTER);
-        
-        // 按钮区域
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        btnPanel.setBackground(new Color(240, 240, 240));
+        // 5. 抽牌按钮
         drawButton = new JButton("抽一张牌");
-        drawButton.setFont(new Font("微软雅黑", Font.BOLD, 18));
-        drawButton.setPreferredSize(new Dimension(200, 50));
+        drawButton.setUI(new BasicButtonUI());
+        drawButton.setFont(new Font("微软雅黑", Font.BOLD, 16));
         drawButton.setFocusPainted(false);
-        drawButton.setOpaque(true);  // 确保背景色显示
-        drawButton.setContentAreaFilled(true);  // 确保填充背景
-        drawButton.setBorderPainted(true);  // 确保边框显示
-        drawButton.setBackground(new Color(230, 126, 34));  // 橙色背景
+        drawButton.setOpaque(true);
+        drawButton.setContentAreaFilled(true);
+        drawButton.setBorderPainted(true);
+        drawButton.setBackground(new Color(230, 126, 34));
         drawButton.setForeground(Color.WHITE);
         drawButton.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(211, 84, 0), 3),
-            BorderFactory.createEmptyBorder(8, 20, 8, 20)
+            BorderFactory.createEmptyBorder(10, 25, 10, 25)
         ));
         drawButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         drawButton.setEnabled(false);
@@ -161,24 +153,90 @@ public class UnoClientGUI extends JFrame {
         drawButton.addMouseListener(new MouseAdapter() {
             public void mouseEntered(MouseEvent e) {
                 if (drawButton.isEnabled()) {
-                    drawButton.setBackground(new Color(211, 84, 0));  // 深橙色
+                    drawButton.setBackground(new Color(211, 84, 0));
                 }
             }
             public void mouseExited(MouseEvent e) {
                 if (drawButton.isEnabled()) {
                     drawButton.setBackground(new Color(230, 126, 34));
                 }
-            }});
-        btnPanel.add(drawButton);
-        bottomPanel.add(btnPanel, BorderLayout.SOUTH);
+            }
+        });
         
-        add(bottomPanel, BorderLayout.SOUTH);
+        // --- 将组件加入分层面板 ---
+        mainLayer.add(backgroundPanel, Integer.valueOf(0));
+        mainLayer.add(statusLabel, Integer.valueOf(50));
+        mainLayer.add(centerTable, Integer.valueOf(100));
+        mainLayer.add(leftAvatar, Integer.valueOf(100));
+        mainLayer.add(topAvatar, Integer.valueOf(100));
+        mainLayer.add(rightAvatar, Integer.valueOf(100));
+        mainLayer.add(myAvatar, Integer.valueOf(100));
+        mainLayer.add(myHandPanel, Integer.valueOf(200));
+        mainLayer.add(drawButton, Integer.valueOf(300));
+        
+        // --- 添加布局监听器 ---
+        mainLayer.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                updateLayout(mainLayer.getWidth(), mainLayer.getHeight());
+            }
+        });
+        
+        // 首次手动调用布局
+        updateLayout(getWidth(), getHeight());
+    }
+    
+    private void updateLayout(int w, int h) {
+        // 1. 背景铺满
+        backgroundPanel.setBounds(0, 0, w, h);
+        
+        // 2. 状态标签（顶部中间）
+        statusLabel.setBounds(0, 20, w, 30);
+        
+        // 3. 中心桌子（牌堆 + 方向指示）
+        int tableSize = 350;
+        int tableX = (w - tableSize) / 2;
+        int tableY = (h - tableSize) / 2- 50;
+        centerTable.setBounds(tableX, tableY, tableSize, tableSize);
+        
+        // 在中心桌子内布局牌堆和方向
+        int deckCardWidth = 100;
+        int deckCardHeight = 180;
+        topCardContainer.setBounds((tableSize - deckCardWidth) / 2, (tableSize - deckCardHeight) / 2 - 20, deckCardWidth, deckCardHeight);
+        directionLabel.setBounds(tableSize / 2 + 70, tableSize / 2 + 30, 60, 60);
+        
+        // 4. 头像定位
+        int avW = 120;
+        int avH = 150;
+        int margin = 30;
+        
+        leftAvatar.setBounds(margin, (h - avH) / 2 - 80, avW, avH);
+        rightAvatar.setBounds(w - avW - margin, (h - avH) / 2 - 80, avW, avH);
+        topAvatar.setBounds((w - avW) / 2, margin + 50, avW, avH);
+        myAvatar.setBounds(w - avW - margin, h - avH - margin - 20, avW, avH);
+        
+        // 5. 手牌区域（底部居中）
+        int handH = 250;
+        int handW = Math.min((int)(w * 0.65), 800);
+        myHandPanel.setBounds((w - handW) / 2, h - handH - 30, handW, handH);
+        
+        // 更新手牌显示
+        if (!hand.isEmpty()) {
+            updateHandDisplay();
+        }
+        
+        // 6. 抽牌按钮（右下角，你的头像左侧）
+        int btnW = 140;
+        int btnH = 45;
+        int btnX = w - avW - margin - btnW - 15;
+        int btnY = h - margin - btnH - 80;
+        drawButton.setBounds(btnX, btnY, btnW, btnH);
     }
     
     private void connectToServer() {
         new Thread(() -> {
             try {
-                socket = new Socket(SERVER_HOST, SERVER_PORT);
+                socket = new Socket(serverHost, SERVER_PORT);
                 output = new ObjectOutputStream(socket.getOutputStream());
                 input = new ObjectInputStream(socket.getInputStream());
                 
@@ -186,12 +244,19 @@ public class UnoClientGUI extends JFrame {
                 joinMsg.setPlayerName(playerName);
                 sendMessage(joinMsg);
                 
-                logMessage("[连接] 已连接到服务器");
+                SwingUtilities.invokeLater(() -> {
+                    statusLabel.setText("已连接到服务器");
+                    statusLabel.setForeground(new Color(46, 204, 113));
+                });
                 
                 receiveMessages();
             } catch (IOException e) {
-                logMessage("[错误] 无法连接到服务器");
-                JOptionPane.showMessageDialog(this, "无法连接到服务器", "错误", JOptionPane.ERROR_MESSAGE);}
+                SwingUtilities.invokeLater(() -> {
+                    statusLabel.setText("无法连接到服务器");
+                    statusLabel.setForeground(new Color(231, 76, 60));
+                });
+                JOptionPane.showMessageDialog(this, "无法连接到服务器", "错误", JOptionPane.ERROR_MESSAGE);
+            }
         }).start();
     }
     
@@ -202,30 +267,31 @@ public class UnoClientGUI extends JFrame {
                 SwingUtilities.invokeLater(() -> handleMessage(message));
             }
         } catch (Exception e) {
-            logMessage("✗ 与服务器断开连接");}
+            SwingUtilities.invokeLater(() -> {
+                statusLabel.setText("与服务器断开连接");
+                statusLabel.setForeground(new Color(231, 76, 60));
+            });
+        }
     }
     
     private void handleMessage(Message message) {
         switch (message.getType()) {
             case GAME_STATE:
                 if (message.getCards() != null) {
-                    int oldHandSize = hand.size();
                     hand = message.getCards();
-                    int newHandSize = hand.size();
-                    
-                    // 只有在手牌数量变化时才显示消息，避免重复显示"游戏开始"
-                    if (oldHandSize == 0 && newHandSize > 0) {
-                        logMessage("[游戏] 游戏开始！你有 " + hand.size() + " 张牌");
-                    } else if (newHandSize > oldHandSize) {
-                        logMessage("之前有"+oldHandSize+"张牌");
-                        logMessage("[手牌] 你的手牌已更新，现在有 " + hand.size() + " 张牌");
-                    }
                     updateHandDisplay();
+                    myAvatar.setCardCount(hand.size());
                 }
                 if (message.getCard() != null) {
                     topCard = message.getCard();
                     updateTopCard();
                 }
+                if (message.getPlayerInfos() != null) {
+                    playerInfos = message.getPlayerInfos();
+                    updatePlayerAvatars();
+                }
+                statusLabel.setText("游戏开始！");
+                statusLabel.setForeground(new Color(46, 204, 113));
                 break;
                 
             case YOUR_TURN:
@@ -235,112 +301,136 @@ public class UnoClientGUI extends JFrame {
                 statusLabel.setText("轮到你了！");
                 statusLabel.setForeground(new Color(46, 204, 113));
                 drawButton.setEnabled(true);
-                logMessage("⏰ 轮到你了！");
+                myAvatar.setCurrentTurn(true);
                 updateHandDisplay();
+                if (message.getPlayerInfos() != null) {
+                    playerInfos = message.getPlayerInfos();
+                    updatePlayerAvatars();
+                }
                 break;
                 
             case CARD_PLAYED:
-                logMessage("[玩家] " + message.getPlayerName() + " 出了: " + message.getCard());
                 topCard = message.getCard();
                 updateTopCard();
                 myTurn = false;
-                statusLabel.setText("⏳ 等待其他玩家...");
-                statusLabel.setForeground(new Color(100, 100, 100));
+                statusLabel.setText(message.getPlayerName() + " 出牌");
+                statusLabel.setForeground(Color.WHITE);
                 drawButton.setEnabled(false);
+                myAvatar.setCurrentTurn(false);
                 updateHandDisplay();
+                if (message.getPlayerInfos() != null) {
+                    playerInfos = message.getPlayerInfos();
+                    updatePlayerAvatars();
+                }
                 break;
                 
             case CARD_DRAWN:
                 if (message.getCards() != null) {
                     hand = message.getCards();
-                    if (message.getContent() != null) {
-                        logMessage("[抽牌] 你" + message.getContent());
-                    }
                     updateHandDisplay();
+                    myAvatar.setCardCount(hand.size());
                     myTurn = false;
-                    drawButton.setEnabled(false);
+                    drawButton.setEnabled(false);myAvatar.setCurrentTurn(false);
                 } else if (message.getCard() != null) {
                     hand.add(message.getCard());
-                    logMessage("[抽牌] 你抽到了: " + message.getCard());
                     updateHandDisplay();
+                    myAvatar.setCardCount(hand.size());
                     myTurn = false;
                     drawButton.setEnabled(false);
-                } else if (message.getPlayerName() != null) {
-                    String msg = "[玩家] " + message.getPlayerName();
-                    if (message.getContent() != null) {
-                        msg += " " + message.getContent();
-                    } else {
-                        msg += "抽了一张牌";
-                    }
-                    logMessage(msg);
+                    myAvatar.setCurrentTurn(false);
+                }
+                if (message.getPlayerInfos() != null) {
+                    playerInfos = message.getPlayerInfos();
+                    updatePlayerAvatars();
                 }
                 break;
                 
             case PLAYER_JOINED:
-                logMessage("[加入] 玩家 " + message.getPlayerName() + " 加入了游戏");
+                statusLabel.setText(message.getPlayerName() + " 加入游戏");
+                statusLabel.setForeground(Color.WHITE);
                 break;
                 
             case PLAYER_LEFT:
-                logMessage("[离开] 玩家 " + message.getPlayerName() + " 离开了游戏");
+                statusLabel.setText(message.getPlayerName() + " 离开游戏");
+                statusLabel.setForeground(new Color(231, 76, 60));
                 break;
                 
             case GAME_OVER:
-                System.out.println("客户端收到GAME_OVER消息: " + message.getPlayerName());
-                logMessage("[结束] 游戏结束！获胜者: " + message.getPlayerName());
-                statusLabel.setText("游戏结束");
+                statusLabel.setText("游戏结束！");
                 statusLabel.setForeground(new Color(230, 126, 34));
                 myTurn = false;
                 drawButton.setEnabled(false);
+                myAvatar.setCurrentTurn(false);
                 
-                // 确保在EDT线程中显示弹窗
                 SwingUtilities.invokeLater(() -> {
                     try {
-                        // 如果是当前玩家获胜，显示特殊消息
                         if (message.getPlayerName().equals(playerName)) {
                             JOptionPane.showMessageDialog(this,
-                                "🎉 恭喜你赢得了游戏！\n",
+                                "恭喜你赢得了游戏！\n",
                                 "胜利！", JOptionPane.INFORMATION_MESSAGE);
-                        } else {
+                } else {
                             JOptionPane.showMessageDialog(this,
                                 "游戏结束！\n获胜者: " + message.getPlayerName(),
                                 "游戏结束", JOptionPane.INFORMATION_MESSAGE);
                         }
                     } catch (Exception e) {
-                        System.err.println("显示胜利弹窗时出错: " + e.getMessage());
                         e.printStackTrace();
                     }
                 });
                 break;
                 
             case ERROR:
-                logMessage("[错误] " + message.getContent());
+                statusLabel.setText("错误: " + message.getContent());
+                statusLabel.setForeground(new Color(231, 76, 60));
                 break;
         }
     }
     
+    private void updatePlayerAvatars() {
+        if (playerInfos.size() < 2) return;
+        
+        // 更新其他玩家的头像
+        int otherPlayerIndex = 0;
+        PlayerAvatarPanel[] otherAvatars = {topAvatar, leftAvatar, rightAvatar};
+        
+        for (PlayerInfo info : playerInfos) {
+            if (!info.getName().equals(playerName)) {
+                if (otherPlayerIndex < otherAvatars.length) {
+                    PlayerAvatarPanel avatar = otherAvatars[otherPlayerIndex];
+                    avatar.setPlayerName(info.getName());
+                    avatar.setCardCount(info.getCardCount());
+                    avatar.setCurrentTurn(info.isCurrentPlayer());
+                    otherPlayerIndex++;
+                }
+            } else {
+                // 更新自己的头像
+                myAvatar.setCardCount(info.getCardCount());
+                myAvatar.setCurrentTurn(info.isCurrentPlayer());
+            }
+        }
+    }
+    
     private void updateTopCard() {
-        if (topCard != null && topCardContainer != null) {
+        if (topCard != null) {
             topCardContainer.removeAll();
             UnoCardPanel cardPanel = new UnoCardPanel(topCard, false);
-            topCardContainer.add(cardPanel);
+            topCardContainer.add(cardPanel, BorderLayout.CENTER);
+            centerTable.add(topCardContainer);
+            centerTable.add(directionLabel);
             topCardContainer.revalidate();
             topCardContainer.repaint();
         }
     }
     
     private void updateHandDisplay() {
-        handPanel.removeAll();
-        handCountLabel.setText(hand.size() + " 张");
-        
-        // 使用绝对布局和z-order管理
-        handPanel.setLayout(null);
+        myHandPanel.removeAll();
         
         int cardWidth = 100;
         int cardHeight = 180;
         int overlap = 60;
         
-        int totalWidth = (hand.size() - 1) * overlap + cardWidth;
-        handPanel.setPreferredSize(new java.awt.Dimension(totalWidth, cardHeight + 80));  // 增加容器高度
+        int totalWidth = hand.isEmpty() ? 0 : (hand.size() - 1) * overlap + cardWidth;
+        int startX = (myHandPanel.getWidth() - totalWidth) / 2;
         
         for (int i = 0; i < hand.size(); i++) {
             final int index = i;
@@ -349,15 +439,9 @@ public class UnoClientGUI extends JFrame {
             
             UnoCardPanel cardPanel = new UnoCardPanel(card, canPlay);
             
-            if (!myTurn || !canPlay) {
-                cardPanel.setEnabled(false);
-            }
-            
-            int x = i * overlap;
-            int y = 50;  // 向下移动，为悬停提供更多向上空间
+            int x = startX + i * overlap;
+            int y = 50;
             cardPanel.setBounds(x, y, cardWidth, cardHeight);
-            
-            // 存储原始z-order索引
             cardPanel.putClientProperty("originalZOrder", i);
             
             cardPanel.addMouseListener(new MouseAdapter() {
@@ -369,44 +453,31 @@ public class UnoClientGUI extends JFrame {
                 
                 public void mouseEntered(MouseEvent e) {
                     cardPanel.setHovered(true);
-                    // 悬停时提升到最上层（z-order 0是最上层）
-                    handPanel.setComponentZOrder(cardPanel, 0);
-                    handPanel.repaint();
+                    myHandPanel.setComponentZOrder(cardPanel, 0);
+                    myHandPanel.repaint();
                 }
                 
                 public void mouseExited(MouseEvent e) {
                     cardPanel.setHovered(false);
                     Integer originalIndex = (Integer) cardPanel.getClientProperty("originalZOrder");
                     if (originalIndex != null) {
-                        
-                        int totalCards = handPanel.getComponentCount();
+                        int totalCards = myHandPanel.getComponentCount();
                         int newZOrder = totalCards - 1 - originalIndex;
                         if (newZOrder >= 0 && newZOrder < totalCards) {
-                            handPanel.setComponentZOrder(cardPanel, newZOrder);
+                            myHandPanel.setComponentZOrder(cardPanel, newZOrder);
                         }
                     }
-                    handPanel.repaint();
+                    myHandPanel.repaint();
                 }
             });
             
-            handPanel.add(cardPanel);
-            int initialZOrder = handPanel.getComponentCount() - 1 - i;
-            handPanel.setComponentZOrder(cardPanel, initialZOrder);
+            myHandPanel.add(cardPanel);
+            int initialZOrder = myHandPanel.getComponentCount() - 1 - i;
+            myHandPanel.setComponentZOrder(cardPanel, initialZOrder);
         }
         
-        handPanel.revalidate();
-        handPanel.repaint();
-    }
-    
-    private java.awt.Color getColorForCard(Card card) {
-        switch (card.getColor()) {
-            case RED: return new java.awt.Color(231, 76, 60);
-            case BLUE: return new java.awt.Color(52, 152, 219);
-            case GREEN: return new java.awt.Color(46, 204, 113);
-            case YELLOW: return new java.awt.Color(241, 196, 15);
-            case BLACK: return new java.awt.Color(44, 62, 80);
-            default: return java.awt.Color.GRAY;
-        }
+        myHandPanel.revalidate();
+        myHandPanel.repaint();
     }
     
     private void playCard(int index) {
@@ -448,21 +519,18 @@ public class UnoClientGUI extends JFrame {
         
         hand.remove(index);
         
-        // 检查是否出完所有牌（本地检查，服务器也会验证）
         if (hand.isEmpty()) {
-            logMessage("🎉 恭喜！你出完了所有牌！");
-            statusLabel.setText("🏆 你赢了！");
+            statusLabel.setText("你赢了！");
             statusLabel.setForeground(new Color(46, 204, 113));
             drawButton.setEnabled(false);
             updateHandDisplay();
-            // 不要return，继续等待服务器发送GAME_OVER消息
         }
         
         updateHandDisplay();
         myTurn = false;
-        statusLabel.setText("⏳ 等待其他玩家...");
-        statusLabel.setForeground(new Color(100, 100, 100));
-        drawButton.setEnabled(false);
+        statusLabel.setText("等待其他玩家...");
+        statusLabel.setForeground(Color.WHITE);drawButton.setEnabled(false);
+        myAvatar.setCurrentTurn(false);
     }
     
     private void drawCard() {
@@ -473,23 +541,16 @@ public class UnoClientGUI extends JFrame {
         
         Message drawMsg = new Message(MessageType.DRAW_CARD);
         sendMessage(drawMsg);
-        statusLabel.setText("⏳ 等待其他玩家...");
-        statusLabel.setForeground(new Color(100, 100, 100));
-    }
+        statusLabel.setText("等待其他玩家...");
+        statusLabel.setForeground(Color.WHITE);}
     
     private void sendMessage(Message message) {
         try {
             output.writeObject(message);
             output.flush();
         } catch (IOException e) {
-            logMessage("发送消息失败: " + e.getMessage());
+            statusLabel.setText("发送消息失败");
+            statusLabel.setForeground(new Color(231, 76, 60));
         }
-    }
-    
-    private void logMessage(String message) {
-        SwingUtilities.invokeLater(() -> {
-            gameLog.append(message + "\n");
-            gameLog.setCaretPosition(gameLog.getDocument().getLength());
-        });
     }
 }

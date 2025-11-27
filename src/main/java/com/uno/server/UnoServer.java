@@ -69,12 +69,23 @@ public class UnoServer {
                 Message gameState = new Message(MessageType.GAME_STATE);
                 gameState.setCards(new ArrayList<>(player.hand));
                 gameState.setCard(gameRoom.getTopCard());
+                gameState.setPlayerInfos(getPlayerInfos());
                 handler.sendMessage(gameState);
             }
         }
         
         // 通知当前玩家轮到他了
         notifyCurrentPlayer();
+    }
+    
+    private List<PlayerInfo> getPlayerInfos() {
+        List<PlayerInfo> playerInfos = new ArrayList<>();
+        GameRoom.Player currentPlayer = gameRoom.getCurrentPlayer();
+        for (GameRoom.Player player : gameRoom.getPlayers()) {
+            boolean isCurrent = player.name.equals(currentPlayer.name);
+            playerInfos.add(new PlayerInfo(player.name, player.hand.size(), isCurrent));
+        }
+        return playerInfos;
     }
     
     public synchronized void playCard(String playerName, Card card) {
@@ -93,10 +104,11 @@ public class UnoServer {
         if (gameRoom.playCard(playerName, card)) {
             int handSizeAfterPlay = player.hand.size();
             // System.out.println("[调试] 玩家 " + playerName + " 出牌后手牌数: " + handSizeAfterPlay);
-            // 广播出牌消息
+            // 广播出牌消息（包含更新后的玩家信息）
             Message cardPlayed = new Message(MessageType.CARD_PLAYED);
             cardPlayed.setPlayerName(playerName);
             cardPlayed.setCard(card);
+            cardPlayed.setPlayerInfos(getPlayerInfos());
             broadcastMessage(cardPlayed);
             
             // 检查游戏是否结束（玩家出完所有牌）
@@ -136,10 +148,11 @@ public class UnoServer {
                     penalizedHandler.sendMessage(handUpdate);
                 }
 
-                // 向其他玩家广播罚牌消息（不包含被罚玩家）
+                // 向其他玩家广播罚牌消息（不包含被罚玩家，包含玩家信息）
                 Message penaltyBroadcast = new Message(MessageType.CARD_DRAWN);
                 penaltyBroadcast.setPlayerName(penalizedPlayer.name);
                 penaltyBroadcast.setContent("被罚抽" + drawCount + "张牌");
+                penaltyBroadcast.setPlayerInfos(getPlayerInfos());
                 for (ClientHandler client : clients) {
                     if (!penalizedPlayer.name.equals(client.getPlayerName())) {
                         client.sendMessage(penaltyBroadcast);
@@ -180,9 +193,10 @@ public class UnoServer {
                 handler.sendMessage(drawn);
             }
             
-            // 向其他玩家广播抽牌消息（不包含抽牌玩家本人）
+            // 向其他玩家广播抽牌消息（不包含抽牌玩家本人，包含玩家信息）
             Message drawMsg = new Message(MessageType.CARD_DRAWN);
             drawMsg.setPlayerName(playerName);
+            drawMsg.setPlayerInfos(getPlayerInfos());
             for (ClientHandler client : clients) {
                 if (!playerName.equals(client.getPlayerName())) {
                     client.sendMessage(drawMsg);
@@ -213,6 +227,7 @@ public class UnoServer {
         if (handler != null) {
             Message yourTurn = new Message(MessageType.YOUR_TURN);
             yourTurn.setCard(gameRoom.getTopCard());
+            yourTurn.setPlayerInfos(getPlayerInfos());
             handler.sendMessage(yourTurn);
         }
     }
