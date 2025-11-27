@@ -11,6 +11,7 @@ public class PlayerAvatarPanel extends JPanel {
     private int cardCount;
     private boolean isCurrentTurn;
     private boolean isMe;
+    private boolean ready;
     
     private JLabel nameLabel;
     private JLabel cardCountLabel;
@@ -21,6 +22,7 @@ public class PlayerAvatarPanel extends JPanel {
         this.cardCount = cardCount;
         this.isMe = isMe;
         this.isCurrentTurn = false;
+        this.ready = false;
         
         setLayout(new BorderLayout(5, 5));
         setOpaque(false);
@@ -65,6 +67,17 @@ public class PlayerAvatarPanel extends JPanel {
                 int textX = x + (size - fm.stringWidth(initial)) / 2;
                 int textY = y + (size + fm.getAscent() - fm.getDescent()) / 2;
                 g2d.drawString(initial, textX, textY);
+                
+                // 如果已准备，在右下角画一个勾
+                if (ready) {
+                    g2d.setColor(new Color(39, 174, 96, 220));
+                    g2d.fillOval(x + size - 22, y + size - 22, 20, 20);
+                    
+                    g2d.setColor(Color.WHITE);
+                    g2d.setStroke(new BasicStroke(3));
+                    g2d.drawLine(x + size - 18, y + size - 12, x + size - 14, y + size - 8);
+                    g2d.drawLine(x + size - 14, y + size - 8, x + size - 8, y + size - 16);
+                }
                 
                 g2d.dispose();
             }
@@ -113,5 +126,10 @@ public class PlayerAvatarPanel extends JPanel {
     
     public String getPlayerName() {
         return playerName;
+    }
+
+    public void setReady(boolean ready) {
+        this.ready = ready;
+        repaint();
     }
 }

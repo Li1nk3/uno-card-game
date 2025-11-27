@@ -39,6 +39,14 @@ public class ClientHandler extends Thread {
                 playerName = message.getPlayerName();
                 server.addPlayer(playerName, this);
                 break;
+            
+            case START_GAME:
+                server.startGame();
+                break;
+            
+            case READY:
+                server.setPlayerReady(playerName);
+                break;
                 
             case PLAY_CARD:
                 server.playCard(playerName, message.getCard());

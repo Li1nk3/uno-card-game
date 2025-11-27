@@ -13,6 +13,7 @@ public class GameRoom {
     static class Player {
         String name;
         List<Card> hand = new ArrayList<>();
+        boolean ready = false;
         
         Player(String name) {
             this.name = name;
@@ -21,6 +22,20 @@ public class GameRoom {
     
     public void addPlayer(String name) {
         players.add(new Player(name));
+    }
+
+    public void setPlayerReady(String playerName, boolean ready) {
+        Player player = getPlayer(playerName);
+        if (player != null) {
+            player.ready = ready;
+        }
+    }
+
+    public boolean areAllPlayersReady() {
+        if (players.size() < 2) {
+            return false;
+        }
+        return players.stream().allMatch(p -> p.ready);
     }
     
     public void startGame() {

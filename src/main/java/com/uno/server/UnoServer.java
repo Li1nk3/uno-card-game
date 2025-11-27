@@ -48,19 +48,38 @@ public class UnoServer {
         joinMsg.setPlayerName(playerName);
         broadcastMessage(joinMsg);
         
-        System.out.println("玩家加入: " + playerName);
-        
-        // 如果有2个或以上玩家，可以开始游戏
-        if (gameRoom.getPlayers().size() >= 2) {
+        System.out.println("玩家加入: " + playerName + "，当前玩家数: " + gameRoom.getPlayers().size());
+    }
+    
+    public synchronized void setPlayerReady(String playerName) {
+        gameRoom.setPlayerReady(playerName, true);
+
+        // 通知所有玩家准备状态已改变
+        Message readyMsg = new Message(MessageType.PLAYER_READY_STATE);
+        readyMsg.setPlayerInfos(getPlayerInfos());
+        broadcastMessage(readyMsg);
+
+        // 检查是否所有玩家都准备好了
+        if (gameRoom.areAllPlayersReady()) {
             startGame();
         }
     }
-    
-    private void startGame() {
+
+    public synchronized void startGame() {
+        if (gameStarted) {
+            System.out.println("游戏已经开始");
+            return;
+        }
+        
+        if (gameRoom.getPlayers().size() < 2) {
+            System.out.println("至少需要2个玩家才能开始游戏");
+            return;
+        }
+        
         gameStarted = true;
         gameRoom.startGame();
         
-        System.out.println("游戏开始！");
+        System.out.println("游戏开始！玩家数: " + gameRoom.getPlayers().size());
         
         // 给每个玩家发送初始手牌
         for (GameRoom.Player player : gameRoom.getPlayers()) {
@@ -83,7 +102,7 @@ public class UnoServer {
         GameRoom.Player currentPlayer = gameRoom.getCurrentPlayer();
         for (GameRoom.Player player : gameRoom.getPlayers()) {
             boolean isCurrent = player.name.equals(currentPlayer.name);
-            playerInfos.add(new PlayerInfo(player.name, player.hand.size(), isCurrent));
+            playerInfos.add(new PlayerInfo(player.name, player.hand.size(), isCurrent, player.ready));
         }
         return playerInfos;
     }

@@ -33,9 +33,11 @@ public class UnoClientGUI extends JFrame {
     private PlayerAvatarPanel leftAvatar, rightAvatar, topAvatar, myAvatar;
     private JPanel centerTable;
     private JPanel myHandPanel;
+    private JButton startButton;
     private JButton drawButton;
     private JPanel topCardContainer;
     private JLabel directionLabel;
+    private boolean gameStarted = false;
     private JLabel statusLabel;
     
     public static void main(String[] args) {
@@ -162,6 +164,35 @@ public class UnoClientGUI extends JFrame {
                 }
             }
         });
+        // 6. 准备/开始游戏按钮
+        startButton = new JButton("准备");
+        startButton.setUI(new BasicButtonUI());
+        startButton.setFont(new Font("微软雅黑", Font.BOLD, 18));
+        startButton.setFocusPainted(false);
+        startButton.setOpaque(true);
+        startButton.setContentAreaFilled(true);
+        startButton.setBorderPainted(true);
+        startButton.setBackground(new Color(46, 204, 113));
+        startButton.setForeground(Color.WHITE);
+        startButton.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(39, 174, 96), 3),
+            BorderFactory.createEmptyBorder(15, 35, 15, 35)
+        ));
+        startButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        startButton.setEnabled(true); // 初始时启用
+        startButton.addActionListener(e -> sendReadyMessage());
+        startButton.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                if (startButton.isEnabled()) {
+                    startButton.setBackground(new Color(39, 174, 96));
+                }
+            }
+            public void mouseExited(MouseEvent e) {
+                if (startButton.isEnabled()) {
+                    startButton.setBackground(new Color(46, 204, 113));
+                }
+            }
+        });
         
         // --- 将组件加入分层面板 ---
         mainLayer.add(backgroundPanel, Integer.valueOf(0));
@@ -173,6 +204,7 @@ public class UnoClientGUI extends JFrame {
         mainLayer.add(myAvatar, Integer.valueOf(100));
         mainLayer.add(myHandPanel, Integer.valueOf(200));
         mainLayer.add(drawButton, Integer.valueOf(300));
+        mainLayer.add(startButton, Integer.valueOf(300));
         
         // --- 添加布局监听器 ---
         mainLayer.addComponentListener(new ComponentAdapter() {
@@ -189,48 +221,64 @@ public class UnoClientGUI extends JFrame {
     private void updateLayout(int w, int h) {
         // 1. 背景铺满
         backgroundPanel.setBounds(0, 0, w, h);
-        
+
         // 2. 状态标签（顶部中间）
-        statusLabel.setBounds(0, 20, w, 30);
-        
-        // 3. 中心桌子（牌堆 + 方向指示）
-        int tableSize = 350;
-        int tableX = (w - tableSize) / 2;
-        int tableY = (h - tableSize) / 2- 50;
-        centerTable.setBounds(tableX, tableY, tableSize, tableSize);
-        
-        // 在中心桌子内布局牌堆和方向
-        int deckCardWidth = 100;
-        int deckCardHeight = 180;
-        topCardContainer.setBounds((tableSize - deckCardWidth) / 2, (tableSize - deckCardHeight) / 2 - 20, deckCardWidth, deckCardHeight);
-        directionLabel.setBounds(tableSize / 2 + 70, tableSize / 2 + 30, 60, 60);
-        
-        // 4. 头像定位
+        statusLabel.setBounds(0, 10, w, 30);
+
+        // 定义尺寸
+        int tableSize = 300; // 减小桌子尺寸
         int avW = 120;
         int avH = 150;
         int margin = 30;
-        
-        leftAvatar.setBounds(margin, (h - avH) / 2 - 80, avW, avH);
-        rightAvatar.setBounds(w - avW - margin, (h - avH) / 2 - 80, avW, avH);
-        topAvatar.setBounds((w - avW) / 2, margin + 50, avW, avH);
-        myAvatar.setBounds(w - avW - margin, h - avH - margin - 20, avW, avH);
-        
-        // 5. 手牌区域（底部居中）
-        int handH = 250;
-        int handW = Math.min((int)(w * 0.65), 800);
-        myHandPanel.setBounds((w - handW) / 2, h - handH - 30, handW, handH);
-        
+        int handH = 220; // 减小手牌区域高度
+
+        // 顶部头像
+        int topAvatarY = 45;
+        topAvatar.setBounds((w - avW) / 2, topAvatarY, avW, avH);
+
+        // 底部手牌区域
+        int handW = Math.min((int)(w * 0.7), 850);
+        int handPanelY = h - handH - 10;
+        myHandPanel.setBounds((w - handW) / 2, handPanelY, handW, handH);
+
+        // 中心桌子（位于顶部头像和手牌区之间）
+        int topAvatarBottom = topAvatarY + avH;
+        int availableSpace = handPanelY - topAvatarBottom;
+        int tableY = topAvatarBottom + (availableSpace - tableSize) / 2;
+        int tableX = (w - tableSize) / 2;
+        centerTable.setBounds(tableX, tableY, tableSize, tableSize);
+
+        // 桌子内部组件
+        int deckCardWidth = 100;
+        int deckCardHeight = 180;
+        topCardContainer.setBounds((tableSize - deckCardWidth) / 2, (tableSize - deckCardHeight) / 2, deckCardWidth, deckCardHeight);
+        directionLabel.setBounds(tableSize / 2 + 60, tableSize / 2 + 20, 60, 60);
+
+        // 左右头像（与桌子垂直居中）
+        int sideAvatarY = tableY + (tableSize - avH) / 2;
+        leftAvatar.setBounds(margin, sideAvatarY, avW, avH);
+        rightAvatar.setBounds(w - avW - margin, sideAvatarY, avW, avH);
+
+        // 我的头像
+        myAvatar.setBounds(w - avW - margin, h - avH - margin, avW, avH);
+
         // 更新手牌显示
         if (!hand.isEmpty()) {
             updateHandDisplay();
         }
-        
-        // 6. 抽牌按钮（右下角，你的头像左侧）
+
+        // 按钮
         int btnW = 140;
         int btnH = 45;
-        int btnX = w - avW - margin - btnW - 15;
-        int btnY = h - margin - btnH - 80;
+        int btnX = myAvatar.getX() - btnW - 15;
+        int btnY = h - margin - btnH - 40;
         drawButton.setBounds(btnX, btnY, btnW, btnH);
+
+        int startBtnW = 140;
+        int startBtnH = 55;
+        int startBtnX = btnX;
+        int startBtnY = btnY - startBtnH - 10;
+        startButton.setBounds(startBtnX, startBtnY, startBtnW, startBtnH);
     }
     
     private void connectToServer() {
@@ -292,6 +340,7 @@ public class UnoClientGUI extends JFrame {
                 }
                 statusLabel.setText("游戏开始！");
                 statusLabel.setForeground(new Color(46, 204, 113));
+                startButton.setVisible(false);
                 break;
                 
             case YOUR_TURN:
@@ -312,6 +361,11 @@ public class UnoClientGUI extends JFrame {
             case CARD_PLAYED:
                 topCard = message.getCard();
                 updateTopCard();
+
+                if (topCard.getType() == CardType.REVERSE) {
+                    directionLabel.setText("←".equals(directionLabel.getText()) ? "→" : "←");
+                }
+
                 myTurn = false;
                 statusLabel.setText(message.getPlayerName() + " 出牌");
                 statusLabel.setForeground(Color.WHITE);
@@ -383,6 +437,13 @@ public class UnoClientGUI extends JFrame {
                 statusLabel.setText("错误: " + message.getContent());
                 statusLabel.setForeground(new Color(231, 76, 60));
                 break;
+
+            case PLAYER_READY_STATE:
+                if (message.getPlayerInfos() != null) {
+                    playerInfos = message.getPlayerInfos();
+                    updatePlayerAvatars();
+                }
+                break;
         }
     }
     
@@ -400,12 +461,14 @@ public class UnoClientGUI extends JFrame {
                     avatar.setPlayerName(info.getName());
                     avatar.setCardCount(info.getCardCount());
                     avatar.setCurrentTurn(info.isCurrentPlayer());
+                    avatar.setReady(info.isReady());
                     otherPlayerIndex++;
                 }
             } else {
                 // 更新自己的头像
                 myAvatar.setCardCount(info.getCardCount());
                 myAvatar.setCurrentTurn(info.isCurrentPlayer());
+                myAvatar.setReady(info.isReady());
             }
         }
     }
@@ -542,7 +605,15 @@ public class UnoClientGUI extends JFrame {
         Message drawMsg = new Message(MessageType.DRAW_CARD);
         sendMessage(drawMsg);
         statusLabel.setText("等待其他玩家...");
-        statusLabel.setForeground(Color.WHITE);}
+        statusLabel.setForeground(Color.WHITE);
+    }
+
+    private void sendReadyMessage() {
+        startButton.setEnabled(false);
+        startButton.setText("已准备");
+        Message readyMsg = new Message(MessageType.READY);
+        sendMessage(readyMsg);
+    }
     
     private void sendMessage(Message message) {
         try {

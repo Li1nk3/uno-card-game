@@ -36,28 +36,20 @@ public class Card implements Serializable {
     }
     
     public boolean canPlayOn(Card topCard) {
-        // 万能牌可以打在任何牌上
+        // 任何时候都可以出万能牌
         if (this.type == CardType.WILD || this.type == CardType.WILD_DRAW_FOUR) {
             return true;
         }
-        
-        // 颜色相同
-        if (this.color == topCard.color) {
-            return true;
+
+        // 如果顶牌是万能牌，则当前牌的颜色必须与顶牌的颜色匹配
+        if (topCard.type == CardType.WILD || topCard.type == CardType.WILD_DRAW_FOUR) {
+            return this.color == topCard.color;
         }
-        
-        // 类型相同
-        if (this.type == topCard.type) {
-            return true;
-        }
-        
-        // 数字卡且数字相同
-        if (this.type == CardType.NUMBER && topCard.type == CardType.NUMBER 
-            && this.number == topCard.number) {
-            return true;
-        }
-        
-        return false;
+
+        // 颜色、数字或类型匹配
+        return this.color == topCard.color ||
+               (this.type == CardType.NUMBER && this.number == topCard.number) ||
+               (this.type != CardType.NUMBER && this.type == topCard.type);
     }
     
     @Override

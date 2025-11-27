@@ -11,11 +11,13 @@ public class PlayerInfo implements Serializable {
     private String name;
     private int cardCount;
     private boolean isCurrentPlayer;
+    private boolean ready;
     
-    public PlayerInfo(String name, int cardCount, boolean isCurrentPlayer) {
+    public PlayerInfo(String name, int cardCount, boolean isCurrentPlayer, boolean ready) {
         this.name = name;
         this.cardCount = cardCount;
         this.isCurrentPlayer = isCurrentPlayer;
+        this.ready = ready;
     }
     
     public String getName() {
@@ -40,5 +42,13 @@ public class PlayerInfo implements Serializable {
     
     public void setCurrentPlayer(boolean currentPlayer) {
         isCurrentPlayer = currentPlayer;
+    }
+
+    public boolean isReady() {
+        return ready;
+    }
+
+    public void setReady(boolean ready) {
+        this.ready = ready;
     }
 }
