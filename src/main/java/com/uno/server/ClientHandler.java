@@ -56,9 +56,14 @@ public class ClientHandler extends Thread {
                 server.drawCard(playerName);
                 break;
                 
+            case SAY_UNO:
+                server.sayUno(playerName);
+                break;
+                
             case CHOOSE_COLOR:
                 server.chooseColor(playerName, message.getChosenColor());
-                break;}
+                break;
+        }
     }
     
     public void sendMessage(Message message) {

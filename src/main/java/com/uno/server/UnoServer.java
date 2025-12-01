@@ -230,7 +230,7 @@ public class UnoServer {
     
     public synchronized void chooseColor(String playerName, Color color) {
         Card topCard = gameRoom.getTopCard();
-        if (topCard != null && (topCard.getType() == CardType.WILD || 
+        if (topCard != null && (topCard.getType() == CardType.WILD ||
             topCard.getType() == CardType.WILD_DRAW_FOUR)) {
             topCard.setColor(color);
             
@@ -238,6 +238,16 @@ public class UnoServer {
             colorChosen.setChosenColor(color);
             broadcastMessage(colorChosen);
         }
+    }
+    
+    public synchronized void sayUno(String playerName) {
+        System.out.println(playerName + " 喊了 UNO!");
+        
+        // 广播UNO消息给所有玩家
+        Message unoMsg = new Message(MessageType.SAY_UNO);
+        unoMsg.setPlayerName(playerName);
+        unoMsg.setContent(playerName + " 喊了 UNO!");
+        broadcastMessage(unoMsg);
     }
     
     private void notifyCurrentPlayer() {

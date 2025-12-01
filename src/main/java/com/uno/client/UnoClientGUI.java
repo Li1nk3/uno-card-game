@@ -35,10 +35,12 @@ public class UnoClientGUI extends JFrame {
     private JPanel myHandPanel;
     private JButton startButton;
     private JButton drawButton;
+    private JButton unoButton;
     private JPanel topCardContainer;
     private JLabel directionLabel;
     private boolean gameStarted = false;
     private JLabel statusLabel;
+    private boolean saidUno = false;  // 是否已经喊过UNO
     
     public static void main(String[] args) {
         try {
@@ -91,20 +93,8 @@ public class UnoClientGUI extends JFrame {
         // --- 初始化组件 ---
         
         // 1. 背景层
-        backgroundPanel = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2d = (Graphics2D) g;
-                // 渐变背景
-                GradientPaint gradient = new GradientPaint(
-                    0, 0, new Color(44, 62, 80),
-                    0, getHeight(), new Color(52, 73, 94)
-                );
-                g2d.setPaint(gradient);
-                g2d.fillRect(0, 0, getWidth(), getHeight());
-            }
-        };
+        backgroundPanel = new JPanel();
+        backgroundPanel.setBackground(new Color(34, 49, 63));  // 深蓝灰色纯色背景
         
         // 2. 中心桌子（出牌堆和方向指示）
         centerTable = new JPanel(null);
@@ -164,7 +154,39 @@ public class UnoClientGUI extends JFrame {
                 }
             }
         });
-        // 6. 准备/开始游戏按钮
+        
+        // 6. UNO按钮
+        unoButton = new JButton("UNO!");
+        unoButton.setUI(new BasicButtonUI());
+        unoButton.setFont(new Font("微软雅黑", Font.BOLD, 20));
+        unoButton.setFocusPainted(false);
+        unoButton.setOpaque(true);
+        unoButton.setContentAreaFilled(true);
+        unoButton.setBorderPainted(true);
+        unoButton.setBackground(new Color(231, 76, 60));
+        unoButton.setForeground(Color.WHITE);
+        unoButton.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(192, 57, 43), 3),
+            BorderFactory.createEmptyBorder(12, 30, 12, 30)
+        ));
+        unoButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        unoButton.setEnabled(false);
+        unoButton.setVisible(false);
+        unoButton.addActionListener(e -> sayUno());
+        unoButton.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                if (unoButton.isEnabled()) {
+                    unoButton.setBackground(new Color(192, 57, 43));
+                }
+            }
+            public void mouseExited(MouseEvent e) {
+                if (unoButton.isEnabled()) {
+                    unoButton.setBackground(new Color(231, 76, 60));
+                }
+            }
+        });
+        
+        // 7. 准备/开始游戏按钮
         startButton = new JButton("准备");
         startButton.setUI(new BasicButtonUI());
         startButton.setFont(new Font("微软雅黑", Font.BOLD, 18));
@@ -204,6 +226,7 @@ public class UnoClientGUI extends JFrame {
         mainLayer.add(myAvatar, Integer.valueOf(100));
         mainLayer.add(myHandPanel, Integer.valueOf(200));
         mainLayer.add(drawButton, Integer.valueOf(300));
+        mainLayer.add(unoButton, Integer.valueOf(300));
         mainLayer.add(startButton, Integer.valueOf(300));
         
         // --- 添加布局监听器 ---
@@ -274,10 +297,17 @@ public class UnoClientGUI extends JFrame {
         int btnY = h - margin - btnH - 40;
         drawButton.setBounds(btnX, btnY, btnW, btnH);
 
+        // UNO按钮（在抽牌按钮上方）
+        int unoBtnW = 140;
+        int unoBtnH = 50;
+        int unoBtnX = btnX;
+        int unoBtnY = btnY - unoBtnH - 10;
+        unoButton.setBounds(unoBtnX, unoBtnY, unoBtnW, unoBtnH);
+
         int startBtnW = 140;
         int startBtnH = 55;
         int startBtnX = btnX;
-        int startBtnY = btnY - startBtnH - 10;
+        int startBtnY = unoBtnY - startBtnH - 10;
         startButton.setBounds(startBtnX, startBtnY, startBtnW, startBtnH);
     }
     
@@ -417,19 +447,7 @@ public class UnoClientGUI extends JFrame {
                 myAvatar.setCurrentTurn(false);
                 
                 SwingUtilities.invokeLater(() -> {
-                    try {
-                        if (message.getPlayerName().equals(playerName)) {
-                            JOptionPane.showMessageDialog(this,
-                                "恭喜你赢得了游戏！\n",
-                                "胜利！", JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                            JOptionPane.showMessageDialog(this,
-                                "游戏结束！\n获胜者: " + message.getPlayerName(),
-                                "游戏结束", JOptionPane.INFORMATION_MESSAGE);
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                    showGameOverDialog(message.getPlayerName());
                 });
                 break;
                 
@@ -444,6 +462,24 @@ public class UnoClientGUI extends JFrame {
                     updatePlayerAvatars();
                 }
                 break;
+                
+            case SAY_UNO:
+                // 其他玩家喊了UNO
+                if (!message.getPlayerName().equals(playerName)) {
+                    statusLabel.setText(message.getPlayerName() + " 喊了 UNO!");
+                    statusLabel.setForeground(new Color(231, 76, 60));
+                    
+                    // 2秒后恢复状态
+                    javax.swing.Timer timer = new javax.swing.Timer(2000, e -> {
+                        if (!myTurn) {
+                            statusLabel.setText("等待其他玩家...");
+                            statusLabel.setForeground(Color.WHITE);
+                        }
+                    });
+                    timer.setRepeats(false);
+                    timer.start();
+                }
+                break;
         }
     }
     
@@ -454,6 +490,11 @@ public class UnoClientGUI extends JFrame {
         int otherPlayerIndex = 0;
         PlayerAvatarPanel[] otherAvatars = {topAvatar, leftAvatar, rightAvatar};
         
+        // 先隐藏所有其他玩家头像
+        for (PlayerAvatarPanel avatar : otherAvatars) {
+            avatar.setVisible(false);
+        }
+        
         for (PlayerInfo info : playerInfos) {
             if (!info.getName().equals(playerName)) {
                 if (otherPlayerIndex < otherAvatars.length) {
@@ -462,6 +503,7 @@ public class UnoClientGUI extends JFrame {
                     avatar.setCardCount(info.getCardCount());
                     avatar.setCurrentTurn(info.isCurrentPlayer());
                     avatar.setReady(info.isReady());
+                    avatar.setVisible(true);  // 显示实际玩家
                     otherPlayerIndex++;
                 }
             } else {
@@ -556,24 +598,11 @@ public class UnoClientGUI extends JFrame {
         }
         
         if (card.getType() == CardType.WILD || card.getType() == CardType.WILD_DRAW_FOUR) {
-            String[] colors = {"红色", "蓝色", "绿色", "黄色"};
-            String choice = (String) JOptionPane.showInputDialog(this, "选择颜色:", "万能牌",
-                JOptionPane.QUESTION_MESSAGE, null, colors, colors[0]);
-            
-            if (choice != null) {
-                com.uno.common.Color[] colorEnums = {
-                    com.uno.common.Color.RED, com.uno.common.Color.BLUE,
-                    com.uno.common.Color.GREEN, com.uno.common.Color.YELLOW
-                };
-                for (int i = 0; i < colors.length; i++) {
-                    if (colors[i].equals(choice)) {
-                        card.setColor(colorEnums[i]);
-                        break;
-                    }
-                }
-            } else {
+            com.uno.common.Color selectedColor = showColorPicker();
+            if (selectedColor == null) {
                 return;
             }
+            card.setColor(selectedColor);
         }
         
         Message playMsg = new Message(MessageType.PLAY_CARD);
@@ -582,18 +611,81 @@ public class UnoClientGUI extends JFrame {
         
         hand.remove(index);
         
-        if (hand.isEmpty()) {
+        // 检查是否只剩一张牌
+        if (hand.size() == 1) {
+            // 显示UNO按钮，给玩家3秒时间喊UNO
+            unoButton.setEnabled(true);
+            unoButton.setVisible(true);
+            saidUno = false;
+            
+            // 3秒后自动检查是否喊了UNO
+            javax.swing.Timer unoTimer = new javax.swing.Timer(3000, e -> {
+                if (!saidUno && hand.size() == 1) {
+                    // 没喊UNO，通知服务器罚牌
+                    statusLabel.setText("忘记喊UNO了！罚抽2张牌");
+                    statusLabel.setForeground(new Color(231, 76, 60));
+                    Message penaltyMsg = new Message(MessageType.DRAW_CARD);
+                    penaltyMsg.setContent("UNO_PENALTY");
+                    sendMessage(penaltyMsg);
+                    sendMessage(penaltyMsg); // 抽两张
+                }
+                unoButton.setEnabled(false);
+                unoButton.setVisible(false);
+            });
+            unoTimer.setRepeats(false);
+            unoTimer.start();
+        } else if (hand.isEmpty()) {
             statusLabel.setText("你赢了！");
             statusLabel.setForeground(new Color(46, 204, 113));
             drawButton.setEnabled(false);
+            unoButton.setEnabled(false);
+            unoButton.setVisible(false);
             updateHandDisplay();
         }
         
         updateHandDisplay();
         myTurn = false;
         statusLabel.setText("等待其他玩家...");
-        statusLabel.setForeground(Color.WHITE);drawButton.setEnabled(false);
+        statusLabel.setForeground(Color.WHITE);
+        drawButton.setEnabled(false);
         myAvatar.setCurrentTurn(false);
+    }
+    
+    /**
+     * 喊UNO
+     */
+    private void sayUno() {
+        if (hand.size() == 1) {
+            saidUno = true;
+            unoButton.setEnabled(false);
+            unoButton.setVisible(false);
+            
+            // 发送喊UNO消息到服务器
+            Message unoMsg = new Message(MessageType.SAY_UNO);
+            sendMessage(unoMsg);
+            
+            statusLabel.setText("UNO！");
+            statusLabel.setForeground(new Color(231, 76, 60));
+            
+            // 显示动画效果
+            javax.swing.Timer flashTimer = new javax.swing.Timer(200, null);
+            final int[] flashCount = {0};
+            flashTimer.addActionListener(e -> {
+                if (flashCount[0] < 6) {
+                    if (flashCount[0] % 2 == 0) {
+                        statusLabel.setForeground(new Color(231, 76, 60));
+                    } else {
+                        statusLabel.setForeground(Color.WHITE);
+                    }
+                    flashCount[0]++;
+                } else {
+                    ((javax.swing.Timer)e.getSource()).stop();
+                    statusLabel.setText("等待其他玩家...");
+                    statusLabel.setForeground(Color.WHITE);
+                }
+            });
+            flashTimer.start();
+        }
     }
     
     private void drawCard() {
@@ -608,6 +700,101 @@ public class UnoClientGUI extends JFrame {
         statusLabel.setForeground(Color.WHITE);
     }
 
+    /**
+     * 显示颜色选择器对话框
+     */
+    private com.uno.common.Color showColorPicker() {
+        JDialog dialog = new JDialog(this, "选择颜色", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(400, 250);
+        dialog.setLocationRelativeTo(this);
+        dialog.setUndecorated(true);
+        
+        final com.uno.common.Color[] selectedColor = {null};
+        
+        JPanel mainPanel = new JPanel();
+        mainPanel.setLayout(new BorderLayout(10, 10));
+        mainPanel.setBackground(new Color(44, 62, 80));
+        mainPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(52, 152, 219), 3),
+            BorderFactory.createEmptyBorder(20, 20, 20, 20)
+        ));
+        
+        JLabel titleLabel = new JLabel("选择颜色", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("微软雅黑", Font.BOLD, 24));
+        titleLabel.setForeground(Color.WHITE);
+        mainPanel.add(titleLabel, BorderLayout.NORTH);
+        
+        JPanel buttonPanel = new JPanel(new GridLayout(2, 2, 15, 15));
+        buttonPanel.setOpaque(false);
+        
+        // 红色按钮
+        JButton redBtn = createColorButton("红色", new Color(231, 76, 60));
+        redBtn.addActionListener(e -> {
+            selectedColor[0] = com.uno.common.Color.RED;
+            dialog.dispose();
+        });
+        buttonPanel.add(redBtn);
+        
+        // 蓝色按钮
+        JButton blueBtn = createColorButton("蓝色", new Color(52, 152, 219));
+        blueBtn.addActionListener(e -> {
+            selectedColor[0] = com.uno.common.Color.BLUE;
+            dialog.dispose();
+        });
+        buttonPanel.add(blueBtn);
+        
+        // 绿色按钮
+        JButton greenBtn = createColorButton("绿色", new Color(46, 204, 113));
+        greenBtn.addActionListener(e -> {
+            selectedColor[0] = com.uno.common.Color.GREEN;
+            dialog.dispose();
+        });
+        buttonPanel.add(greenBtn);
+        
+        // 黄色按钮
+        JButton yellowBtn = createColorButton("黄色", new Color(241, 196, 15));
+        yellowBtn.addActionListener(e -> {
+            selectedColor[0] = com.uno.common.Color.YELLOW;
+            dialog.dispose();
+        });
+        buttonPanel.add(yellowBtn);
+        
+        mainPanel.add(buttonPanel, BorderLayout.CENTER);
+        
+        dialog.add(mainPanel);
+        dialog.setVisible(true);
+        
+        return selectedColor[0];
+    }
+    
+    /**
+     * 创建颜色按钮
+     */
+    private JButton createColorButton(String text, Color color) {
+        JButton button = new JButton(text);
+        button.setFont(new Font("微软雅黑", Font.BOLD, 18));
+        button.setForeground(Color.WHITE);
+        button.setBackground(color);
+        button.setFocusPainted(false);
+        button.setBorderPainted(false);
+        button.setOpaque(true);
+        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        button.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+        
+        Color darkerColor = color.darker();
+        button.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                button.setBackground(darkerColor);
+            }
+            public void mouseExited(MouseEvent e) {
+                button.setBackground(color);
+            }
+        });
+        
+        return button;
+    }
+    
     private void sendReadyMessage() {
         startButton.setEnabled(false);
         startButton.setText("已准备");
@@ -622,6 +809,75 @@ public class UnoClientGUI extends JFrame {
         } catch (IOException e) {
             statusLabel.setText("发送消息失败");
             statusLabel.setForeground(new Color(231, 76, 60));
+        }
+    }
+    
+    /**
+     * 显示游戏结束对话框，提供退出房间选项
+     */
+    private void showGameOverDialog(String winnerName) {
+        String message;
+        String title;
+        
+        if (winnerName.equals(playerName)) {
+            title = "🎉 胜利！";
+            message = "恭喜你赢得了游戏！";
+        } else {
+            title = "游戏结束";
+            message = "获胜者: " + winnerName;
+        }
+        
+        Object[] options = {"返回主菜单", "退出游戏"};
+        int choice = JOptionPane.showOptionDialog(
+            this,
+            message,
+            title,
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.INFORMATION_MESSAGE,
+            null,
+            options,
+            options[0]
+        );
+        
+        if (choice == 0) {
+            // 返回主菜单
+            returnToMainMenu();
+        } else {
+            // 退出游戏
+            closeConnection();
+            System.exit(0);
+        }
+    }
+    
+    /**
+     * 返回主菜单
+     */
+    private void returnToMainMenu() {
+        closeConnection();
+        this.dispose();
+        
+        // 重新打开启动器
+        SwingUtilities.invokeLater(() -> {
+            new com.uno.launcher.UnoGameLauncher().setVisible(true);
+        });
+    }
+    
+    /**
+     * 关闭与服务器的连接
+     */
+    private void closeConnection() {
+        try {
+            if (output != null) {
+                output.close();
+            }
+            if (input != null) {
+                input.close();
+            }
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
+        } catch (IOException e) {
+            // 忽略关闭时的异常
         }
     }
 }
