@@ -4,7 +4,24 @@
 
 ## 快速启动
 
-### 编译并运行
+### 方式一：使用脚本（推荐）
+
+**Windows 系统：**
+```bash
+# 双击运行或在命令行执行
+test_game.bat
+```
+
+**Linux/Mac 系统：**
+```bash
+# 添加执行权限（首次运行）
+chmod +x test_game.sh
+
+# 运行脚本
+./test_game.sh
+```
+
+### 方式二：手动编译运行
 ```bash
 # 编译
 javac -d bin -encoding UTF-8 src/main/java/com/uno/*/*.java

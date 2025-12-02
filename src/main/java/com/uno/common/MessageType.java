@@ -8,6 +8,7 @@ public enum MessageType {
     PLAY_CARD,      // 出牌
     DRAW_CARD,      // 抽牌
     SAY_UNO,        // 喊 UNO
+    UNO_PENALTY,    // UNO罚牌（忘记喊UNO）
     CHOOSE_COLOR,   // 选择颜色（万能牌）
     
     // 服务器 -> 客户端

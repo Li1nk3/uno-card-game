@@ -20,6 +20,7 @@ Thumbs.db
 # 本地文件
 preview_gui.bat
 test_game.bat
+test_game.sh
 src/main/java/com/uno/client/UnoClientGUIPreview.java
 
 

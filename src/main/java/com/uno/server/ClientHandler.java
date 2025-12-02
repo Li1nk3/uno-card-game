@@ -56,6 +56,10 @@ public class ClientHandler extends Thread {
                 server.drawCard(playerName);
                 break;
                 
+            case UNO_PENALTY:
+                server.unoPenalty(playerName);
+                break;
+                
             case SAY_UNO:
                 server.sayUno(playerName);
                 break;

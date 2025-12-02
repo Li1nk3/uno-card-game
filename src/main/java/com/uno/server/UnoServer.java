@@ -250,6 +250,39 @@ public class UnoServer {
         broadcastMessage(unoMsg);
     }
     
+    public synchronized void unoPenalty(String playerName) {
+        System.out.println(playerName + " 忘记喊UNO，罚抽2张牌");
+        
+        GameRoom.Player player = gameRoom.getPlayer(playerName);
+        if (player == null) {
+            return;
+        }
+        
+        // 罚抽2张牌
+        List<Card> drawnCards = gameRoom.getDrawnCards(player, 2);
+        
+        // 通知该玩家更新手牌
+        ClientHandler handler = getClientHandler(playerName);
+        if (handler != null) {
+            Message handUpdate = new Message(MessageType.CARD_DRAWN);
+            handUpdate.setCards(new ArrayList<>(player.hand));
+            handUpdate.setContent("忘记喊UNO，罚抽2张牌");
+            handUpdate.setPlayerInfos(getPlayerInfos());
+            handler.sendMessage(handUpdate);
+        }
+        
+        // 向其他玩家广播罚牌消息
+        Message penaltyBroadcast = new Message(MessageType.CARD_DRAWN);
+        penaltyBroadcast.setPlayerName(playerName);
+        penaltyBroadcast.setContent("忘记喊UNO，罚抽2张牌");
+        penaltyBroadcast.setPlayerInfos(getPlayerInfos());
+        for (ClientHandler client : clients) {
+            if (!playerName.equals(client.getPlayerName())) {
+                client.sendMessage(penaltyBroadcast);
+            }
+        }
+    }
+    
     private void notifyCurrentPlayer() {
         GameRoom.Player currentPlayer = gameRoom.getCurrentPlayer();
         ClientHandler handler = getClientHandler(currentPlayer.name);

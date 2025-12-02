@@ -610,6 +610,7 @@ public class UnoClientGUI extends JFrame {
         sendMessage(playMsg);
         
         hand.remove(index);
+        updateHandDisplay();
         
         // 检查是否只剩一张牌
         if (hand.size() == 1) {
@@ -624,10 +625,8 @@ public class UnoClientGUI extends JFrame {
                     // 没喊UNO，通知服务器罚牌
                     statusLabel.setText("忘记喊UNO了！罚抽2张牌");
                     statusLabel.setForeground(new Color(231, 76, 60));
-                    Message penaltyMsg = new Message(MessageType.DRAW_CARD);
-                    penaltyMsg.setContent("UNO_PENALTY");
+                    Message penaltyMsg = new Message(MessageType.UNO_PENALTY);
                     sendMessage(penaltyMsg);
-                    sendMessage(penaltyMsg); // 抽两张
                 }
                 unoButton.setEnabled(false);
                 unoButton.setVisible(false);
@@ -640,10 +639,9 @@ public class UnoClientGUI extends JFrame {
             drawButton.setEnabled(false);
             unoButton.setEnabled(false);
             unoButton.setVisible(false);
-            updateHandDisplay();
         }
         
-        updateHandDisplay();
+        // 在设置myTurn为false之前，先处理完UNO逻辑
         myTurn = false;
         statusLabel.setText("等待其他玩家...");
         statusLabel.setForeground(Color.WHITE);
@@ -655,7 +653,8 @@ public class UnoClientGUI extends JFrame {
      * 喊UNO
      */
     private void sayUno() {
-        if (hand.size() == 1) {
+        // 只要手牌是1张就可以喊UNO，不检查是否是当前回合
+        if (hand.size() == 1 && !saidUno) {
             saidUno = true;
             unoButton.setEnabled(false);
             unoButton.setVisible(false);
@@ -680,8 +679,10 @@ public class UnoClientGUI extends JFrame {
                     flashCount[0]++;
                 } else {
                     ((javax.swing.Timer)e.getSource()).stop();
-                    statusLabel.setText("等待其他玩家...");
-                    statusLabel.setForeground(Color.WHITE);
+                    if (!myTurn) {
+                        statusLabel.setText("等待其他玩家...");
+                        statusLabel.setForeground(Color.WHITE);
+                    }
                 }
             });
             flashTimer.start();
